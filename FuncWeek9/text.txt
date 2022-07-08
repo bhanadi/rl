@@ -1,0 +1,7 @@
+Aditya is a bad boy
+He is a good boy:wq
+
+:q!
+
+quit
+ls
