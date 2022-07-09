@@ -1,7 +1,2 @@
-
+Hello this is a file I create just now:q!
 :q!
-
-:…
-:q!
-
-:q!
