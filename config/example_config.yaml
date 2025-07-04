@@ -1,0 +1,216 @@
+# ETL Framework Configuration Example
+# This file demonstrates how to configure the ETL framework using YAML
+
+# Logging configuration
+logging:
+  level: INFO
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  handlers:
+    console:
+      type: console
+      level: INFO
+    file:
+      type: file
+      level: DEBUG
+      filename: logs/etl_framework.log
+      max_bytes: 10485760  # 10MB
+      backup_count: 5
+
+# Database configurations
+databases:
+  # PostgreSQL example
+  warehouse_db:
+    type: postgresql
+    host: ${DB_HOST:localhost}
+    port: ${DB_PORT:5432}
+    database: ${DB_NAME:data_warehouse}
+    username: ${DB_USER:etl_user}
+    password: ${DB_PASSWORD:secure_password}
+    options:
+      pool_size: 10
+      max_overflow: 20
+
+  # MongoDB example
+  document_db:
+    type: mongodb
+    host: ${MONGO_HOST:localhost}
+    port: ${MONGO_PORT:27017}
+    database: ${MONGO_DB:analytics}
+    username: ${MONGO_USER}
+    password: ${MONGO_PASSWORD}
+
+  # SQLite example (for development/testing)
+  local_db:
+    type: sqlite
+    database: data/local.db
+
+# API configurations
+apis:
+  # REST API example
+  external_api:
+    base_url: https://api.example.com
+    version: v1
+    timeout: 30
+    auth:
+      type: api_key
+      location: header
+      key_name: X-API-Key
+      api_key: ${API_KEY}
+
+  # Another API with basic auth
+  internal_api:
+    base_url: https://internal.company.com/api
+    timeout: 60
+    auth:
+      type: basic
+      username: ${INTERNAL_API_USER}
+      password: ${INTERNAL_API_PASS}
+
+# Cloud storage configurations
+cloud_storage:
+  # AWS S3
+  s3_bucket:
+    type: s3
+    bucket: my-etl-bucket
+    region: us-east-1
+    aws_access_key_id: ${AWS_ACCESS_KEY_ID}
+    aws_secret_access_key: ${AWS_SECRET_ACCESS_KEY}
+
+  # Azure Blob Storage
+  azure_storage:
+    type: azure_blob
+    account_name: ${AZURE_STORAGE_ACCOUNT}
+    account_key: ${AZURE_STORAGE_KEY}
+    container: etl-data
+
+# Pipeline configurations
+pipelines:
+  # Daily sales data pipeline
+  daily_sales_etl:
+    description: "Extract daily sales data and load to warehouse"
+    schedule: "0 2 * * *"  # Daily at 2 AM
+    source:
+      type: api
+      config: external_api
+      endpoint: sales/daily
+    transforms:
+      - type: filter
+        conditions:
+          status: "completed"
+          amount: {"gt": 0}
+      - type: data_type
+        mappings:
+          amount: float
+          transaction_date: datetime
+      - type: null_value
+        strategy: drop
+        columns: ["customer_id", "amount"]
+    validation:
+      schema:
+        transaction_id: {type: string, nullable: false, unique: true}
+        customer_id: {type: integer, nullable: false}
+        amount: {type: float, min_value: 0}
+        transaction_date: {type: datetime, nullable: false}
+      quality:
+        min_records: 1
+        max_null_percentage: 5
+    destination:
+      type: database
+      config: warehouse_db
+      table: daily_sales
+      if_exists: append
+
+  # Customer data sync pipeline
+  customer_sync:
+    description: "Sync customer data from CRM to warehouse"
+    schedule: "0 */6 * * *"  # Every 6 hours
+    source:
+      type: database
+      config: document_db
+      collection: customers
+    transforms:
+      - type: custom
+        function: flatten_customer_data
+      - type: text_cleaning
+        columns: ["name", "email"]
+        operations: ["strip", "lowercase"]
+      - type: duplicate_removal
+        subset: ["email"]
+        keep: "last"
+    validation:
+      business_rules:
+        - name: "valid_email"
+          type: "regex_pattern"
+          column: "email"
+          pattern: "^[\\w\\.-]+@[\\w\\.-]+\\.\\w+$"
+        - name: "age_check"
+          type: "range_check"
+          column: "age"
+          min_value: 18
+          max_value: 120
+    destination:
+      type: database
+      config: warehouse_db
+      table: customers
+      if_exists: replace
+
+# Data quality rules (global)
+data_quality:
+  default_rules:
+    max_null_percentage: 10
+    min_records: 1
+    max_duplicate_percentage: 5
+  
+  critical_columns:
+    - customer_id
+    - transaction_id
+    - email
+    - amount
+
+# Monitoring and alerting
+monitoring:
+  metrics:
+    enabled: true
+    retention_days: 30
+    
+  alerts:
+    email:
+      enabled: ${ALERTS_ENABLED:false}
+      smtp_server: ${SMTP_SERVER:smtp.company.com}
+      smtp_port: 587
+      username: ${SMTP_USER}
+      password: ${SMTP_PASSWORD}
+      recipients:
+        - data-team@company.com
+        - alerts@company.com
+    
+    slack:
+      enabled: ${SLACK_ALERTS:false}
+      webhook_url: ${SLACK_WEBHOOK_URL}
+      channel: "#data-alerts"
+
+# Performance settings
+performance:
+  batch_size: 1000
+  max_workers: 4
+  memory_limit_mb: 2048
+  timeout_seconds: 3600
+
+# Security settings
+security:
+  encrypt_credentials: true
+  credential_store: ${CREDENTIAL_STORE:env}  # env, vault, keyring
+  
+  # Connection timeout and retry settings
+  connection:
+    timeout: 30
+    max_retries: 3
+    retry_delay: 5
+    exponential_backoff: true
+
+# Development/Testing overrides
+development:
+  use_sample_data: ${USE_SAMPLE_DATA:false}
+  sample_size: 100
+  skip_validation: ${SKIP_VALIDATION:false}
+  dry_run: ${DRY_RUN:false}
